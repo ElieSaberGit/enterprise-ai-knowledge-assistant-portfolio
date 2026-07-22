@@ -64,6 +64,10 @@ Question
 - Restart-safe ingestion metadata
 - Recoverable indexing status
 - Batched vector writes
+- Versioned RAG evaluation dataset
+- Deterministic fact, stable-document citation, and refusal scoring
+- Cost-aware evaluation CLI with targeted case execution
+- End-to-end evaluation latency measurement
 - Automated build and tests with GitHub Actions
 
 ## Technology Stack
@@ -80,9 +84,11 @@ Question
 ## Engineering Evidence
 
 - Clean build with zero compiler warnings
-- Automated persistence and ingestion tests
+- Nine automated persistence, ingestion, and evaluation tests
 - Duplicate content rejected even under another filename
 - Vector identifiers cannot collide across documents
+- Stable `DocumentId` prevents filename ambiguity in citation evaluation
+- Five-case live OpenAI/Qdrant baseline recorded with fact, citation, refusal, and latency evidence
 - CI runs restore, build, and tests on pushes and pull requests
 - Secrets excluded from source control
 
@@ -93,7 +99,8 @@ The product handles internal architecture, API, coding-standard, decision, and t
 ## Current Limitations
 
 - Authentication and document permissions are not yet implemented
-- Retrieval and answer quality do not yet have a formal evaluation baseline
+- The first baseline is limited to five cases over one document and exact text matching
+- Retrieval relevance thresholds and recall metrics are not yet implemented
 - The local JSON metadata registry supports only a single application instance
 - Production observability and cloud deployment are not yet complete
 - Qdrant collection provisioning is not automated
