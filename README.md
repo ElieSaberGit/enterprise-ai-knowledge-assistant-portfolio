@@ -68,7 +68,7 @@ Question
 
 ## Technology Stack
 
-- C# and .NET 8
+- C# and .NET 10 LTS
 - ASP.NET Core Web API
 - OpenAI API
 - Qdrant
