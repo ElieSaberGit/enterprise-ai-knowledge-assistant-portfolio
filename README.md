@@ -69,6 +69,9 @@ Question
 - Cost-aware evaluation CLI with targeted case execution
 - End-to-end evaluation latency measurement
 - Automated build and tests with GitHub Actions
+- Configurable Qdrant retrieval threshold with explicit no-evidence refusal
+- In-progress agent fundamentals with strict tool contracts and a read-only
+  document-catalog tool
 
 ## Technology Stack
 
@@ -84,11 +87,16 @@ Question
 ## Engineering Evidence
 
 - Clean build with zero compiler warnings
-- Nine automated persistence, ingestion, and evaluation tests
+- Twelve automated persistence, ingestion, retrieval, evaluation, and agent-tool
+  tests
 - Duplicate content rejected even under another filename
 - Vector identifiers cannot collide across documents
 - Stable `DocumentId` prevents filename ambiguity in citation evaluation
 - Five-case live OpenAI/Qdrant baseline recorded with fact, citation, refusal, and latency evidence
+- Six retrieval thresholds evaluated; the current `0.20` default preserved the
+  5/5 baseline at 1,926 ms average latency
+- Agent-tool test proves status/name filtering and prevents local file paths and
+  content hashes from reaching the model
 - CI runs restore, build, and tests on pushes and pull requests
 - Secrets excluded from source control
 
@@ -100,20 +108,26 @@ The product handles internal architecture, API, coding-standard, decision, and t
 
 - Authentication and document permissions are not yet implemented
 - The first baseline is limited to five cases over one document and exact text matching
-- Retrieval relevance thresholds and recall metrics are not yet implemented
+- The initial retrieval threshold exists, but recall@K and precision@K are not
+  yet measured over representative multi-document data
 - The local JSON metadata registry supports only a single application instance
 - Production observability and cloud deployment are not yet complete
 - Qdrant collection provisioning is not automated
+- The agent learning slice does not yet have a model adapter, orchestration loop,
+  dependency-injection registration, or API endpoint
 
 ## Roadmap
 
-1. Complete the production security baseline
-2. Add a representative RAG evaluation dataset
-3. Measure retrieval, citation, latency, and answer quality
-4. Add observability and verified cloud deployment
-5. Introduce enterprise identity and document permissions
+The learning strategy is breadth-first, followed by deeper iterations:
 
-Agentic AI and multi-agent orchestration are intentionally postponed until the Production RAG foundation is reliable and measurable.
+1. Complete the bounded single-tool agent loop
+2. Add structured outputs and agent evaluation
+3. Build multi-document retrieval metrics and advanced RAG
+4. Explore multimodal AI, MCP, workflow state, and human approval
+5. Explore multi-agent orchestration after single-agent behavior is clear
+
+Production hardening remains a separate track and will be prioritized when a
+real client, deployment, or job opportunity creates concrete requirements.
 
 ## CI/CD
 
