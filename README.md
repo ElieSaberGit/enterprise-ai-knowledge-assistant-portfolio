@@ -72,6 +72,8 @@ Question
 - Configurable Qdrant retrieval threshold with explicit no-evidence refusal
 - Bounded single-tool agent workflow using the OpenAI Responses API
 - Strict read-only document-catalog tool with inspectable execution traces
+- Versioned agent policy cases with deterministic structural trace scoring
+- Internal agent evaluation CLI with targeted case execution
 
 ## Technology Stack
 
@@ -87,7 +89,7 @@ Question
 ## Engineering Evidence
 
 - Clean build with zero compiler warnings
-- Nineteen automated persistence, ingestion, retrieval, evaluation, provider,
+- Thirty automated persistence, ingestion, retrieval, evaluation, provider,
   controller, and agent-orchestration tests
 - Duplicate content rejected even under another filename
 - Vector identifiers cannot collide across documents
@@ -97,6 +99,9 @@ Question
   5/5 baseline at 1,926 ms average latency
 - Agent tests prove strict provider mapping, bounded execution, single-call
   policy, status/name filtering, and exclusion of local paths and content hashes
+- Agent policy tests prove exact tool selection and stopping expectations,
+  recursive sensitive-metadata checks, unknown-tool rejection, safe tool
+  failures, malformed/incomplete provider rejection, and DI composition
 - A live two-turn Responses API run invoked `find_documents`, returned two
   indexed documents, and produced a completed answer with an execution trace
 - CI runs restore, build, and tests on pushes and pull requests
@@ -116,14 +121,15 @@ The product handles internal architecture, API, coding-standard, decision, and t
 - Production observability and cloud deployment are not yet complete
 - Qdrant collection provisioning is not automated
 - The agent endpoint is unauthenticated, has one read-only tool, relies on
-  stored provider response state, and does not yet persist an audit trail
+  stored provider response state, has only three non-adversarial versioned
+  policy cases, and does not yet persist an audit trail
 
 ## Roadmap
 
 The learning strategy is breadth-first, followed by deeper iterations:
 
-1. Add deterministic agent evaluation and policy coverage
-2. Add structured outputs and governed approval fundamentals
+1. Add structured outputs and a governed approval simulation
+2. Expand agent evaluation with adversarial and repeated live cases
 3. Build multi-document retrieval metrics and advanced RAG
 4. Explore multimodal AI, MCP, workflow state, and human approval
 5. Explore multi-agent orchestration after single-agent behavior is clear
