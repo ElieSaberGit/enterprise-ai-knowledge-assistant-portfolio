@@ -22,12 +22,16 @@ Provide concise answers grounded in authorized company documents, with inspectab
 
 ```mermaid
 flowchart LR
-    Client[API Client] --> API[ASP.NET Core API]
+    Client[API Client] --> Keycloak[Keycloak OIDC]
+    Client --> API[ASP.NET Core API]
+    Keycloak --> API
     MCPClient[MCP Client] --> MCP[Local Read-Only MCP Server]
     API --> Files[Managed PDF Storage]
     API --> OpenAI[OpenAI Embeddings and Generation]
     API --> Qdrant[Qdrant Vector Database]
     API --> Registry[Persistent Document Registry]
+    API --> AppDB[PostgreSQL Users Permissions Audit]
+    Keycloak --> IdentityDB[PostgreSQL Identity State]
     MCP --> Registry
 ```
 
@@ -47,8 +51,10 @@ Validate PDF
 
 ```text
 Question
+→ validate OIDC access token
+→ resolve explicit document permissions
 → create question embedding
-→ retrieve relevant chunks
+→ retrieve only authorized chunks
 → generate a grounded answer
 → return document/page/chunk citations
 ```
@@ -81,11 +87,19 @@ Question
 - Atomic single-decision enforcement and simulation-only approval results
 - Local stdio MCP server with one safe `find_documents` tool
 - Shared protocol-neutral catalog query used by both agent and MCP adapters
+- Portable Keycloak OIDC authentication with strict JWT validation
+- EF Core and PostgreSQL identity links, document permissions, and audit events
+- Administrator policies for ingestion, permissions, and governed actions
+- Document scope enforced through listing, RAG, Qdrant, and agent tools
+- Docker Compose topology for API, Keycloak, separate PostgreSQL databases, and
+  Qdrant
 
 ## Technology Stack
 
 - C# and .NET 10 LTS
 - ASP.NET Core Web API
+- Keycloak and OpenID Connect
+- PostgreSQL with EF Core and Npgsql
 - OpenAI API
 - Qdrant
 - Model Context Protocol official C# SDK
@@ -97,9 +111,9 @@ Question
 ## Engineering Evidence
 
 - Clean build with zero compiler warnings
-- Forty-four automated persistence, ingestion, retrieval, evaluation, provider,
-  controller, agent-orchestration, structured-output, approval, catalog, and
-  MCP protocol tests
+- Fifty-three automated security, persistence, ingestion, retrieval,
+  evaluation, provider, controller, agent-orchestration, structured-output,
+  approval, catalog, and MCP protocol tests
 - Duplicate content rejected even under another filename
 - Vector identifiers cannot collide across documents
 - Stable `DocumentId` prevents filename ambiguity in citation evaluation
@@ -119,34 +133,51 @@ Question
 - A real MCP client test launches the server over stdio, discovers exactly one
   read-only/non-destructive tool, calls it, rejects an invalid status, and
   verifies sensitive registry fields are absent
+- Security tests prove strict issuer/audience/signature/lifetime validation,
+  fail-closed endpoint policy, stable issuer/subject user links, idempotent
+  grants, durable audit, empty-scope refusal, and Qdrant provider-output checks
+- EF migration discovery, model comparison, and idempotent PostgreSQL SQL
+  generation are verified
+- Keycloak realm JSON and Docker Compose configuration are validated; live
+  container startup remains pending because Docker was unavailable
 - CI runs restore, build, and tests on pushes and pull requests
 - Secrets excluded from source control
 
 ## Security Approach
 
-The product handles internal architecture, API, coding-standard, decision, and troubleshooting documents. Current security work includes controlled file paths, PDF validation, secret isolation, content identity, metadata-minimized model input, application validation of model plans, and simulation-only approval. Authentication, document-level authorization, durable auditability, and provider data policies remain required before production use.
+The product handles internal architecture, API, coding-standard, decision, and
+troubleshooting documents. Keycloak authenticates users without the application
+storing passwords. The API validates OIDC access tokens and owns document
+authorization in PostgreSQL. Authorization is enforced before catalog, vector,
+RAG, and agent access; permission changes and governed decisions are audited.
+Production TLS, managed secrets, query audit, backup/recovery, and provider data
+policies remain required.
 
 ## Current Limitations
 
-- Authentication and document permissions are not yet implemented
 - The first baseline is limited to five cases over one document and exact text matching
 - The initial retrieval threshold exists, but recall@K and precision@K are not
   yet measured over representative multi-document data
 - The local JSON metadata registry supports only a single application instance
-- Production observability and cloud deployment are not yet complete
+- Production observability and verified cloud deployment are not yet complete
 - Qdrant collection provisioning is not automated
-- The agent endpoint is unauthenticated, has one read-only tool, relies on
-  stored provider response state, has only three non-adversarial versioned
-  policy cases, and does not yet persist an audit trail
-- The approval workflow uses an unverified reviewer label, stores proposals
-  only in process memory, and intentionally has no real deletion capability
-- The MCP server is local-only and unauthenticated; it must not be exposed
-  remotely or expanded with write tools before identity and authorization exist
+- The agent endpoint is authenticated and document-scoped but still has one
+  read-only tool, relies on stored provider response state, has only three
+  non-adversarial policy cases, and does not persist its execution trace
+- The approval workflow uses authenticated reviewer identity and durable
+  decision audit but stores proposals only in process memory and intentionally
+  has no real deletion capability
+- The MCP server is local-only and OS-trusted; it reads the whole local registry
+  and must not be exposed remotely
+- Local Keycloak uses development mode and HTTP; production identity hardening,
+  live container verification, and backup/restore remain
 
 ## Roadmap
 
-The single recommended next milestone is an authentication and
-document-authorization baseline for the API and MCP-sensitive boundaries.
+The single recommended next milestone is a portable production deployment and
+operability baseline with TLS, managed secrets, controlled migrations,
+health/readiness checks, backup/restore evidence, and an authenticated
+end-to-end smoke test.
 
 Production hardening remains a separate track and will be prioritized when a
 real client, deployment, or job opportunity creates concrete requirements.
@@ -159,7 +190,8 @@ GitHub Actions currently performs continuous integration:
 - Build the API and tests
 - Run automated tests
 
-Azure deployment will be added after the deployment architecture, secrets, and cost controls are defined.
+A cloud-neutral deployment will be added after production TLS, secrets,
+migrations, health, backup, and cost controls are defined.
 
 ## Repository Access
 
