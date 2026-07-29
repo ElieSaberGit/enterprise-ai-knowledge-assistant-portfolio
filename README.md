@@ -23,10 +23,12 @@ Provide concise answers grounded in authorized company documents, with inspectab
 ```mermaid
 flowchart LR
     Client[API Client] --> API[ASP.NET Core API]
+    MCPClient[MCP Client] --> MCP[Local Read-Only MCP Server]
     API --> Files[Managed PDF Storage]
     API --> OpenAI[OpenAI Embeddings and Generation]
     API --> Qdrant[Qdrant Vector Database]
     API --> Registry[Persistent Document Registry]
+    MCP --> Registry
 ```
 
 ### Ingestion
@@ -74,6 +76,11 @@ Question
 - Strict read-only document-catalog tool with inspectable execution traces
 - Versioned agent policy cases with deterministic structural trace scoring
 - Internal agent evaluation CLI with targeted case execution
+- Strict JSON Schema output for a simulated high-impact document action
+- Application-validated pending, approved, and rejected proposal state
+- Atomic single-decision enforcement and simulation-only approval results
+- Local stdio MCP server with one safe `find_documents` tool
+- Shared protocol-neutral catalog query used by both agent and MCP adapters
 
 ## Technology Stack
 
@@ -81,6 +88,7 @@ Question
 - ASP.NET Core Web API
 - OpenAI API
 - Qdrant
+- Model Context Protocol official C# SDK
 - PdfPig
 - xUnit
 - Docker
@@ -89,8 +97,9 @@ Question
 ## Engineering Evidence
 
 - Clean build with zero compiler warnings
-- Thirty automated persistence, ingestion, retrieval, evaluation, provider,
-  controller, and agent-orchestration tests
+- Forty-four automated persistence, ingestion, retrieval, evaluation, provider,
+  controller, agent-orchestration, structured-output, approval, catalog, and
+  MCP protocol tests
 - Duplicate content rejected even under another filename
 - Vector identifiers cannot collide across documents
 - Stable `DocumentId` prevents filename ambiguity in citation evaluation
@@ -104,12 +113,18 @@ Question
   failures, malformed/incomplete provider rejection, and DI composition
 - A live two-turn Responses API run invoked `find_documents`, returned two
   indexed documents, and produced a completed answer with an execution trace
+- Swagger verification proved a structured deletion proposal requires a
+  separate decision, repeated decisions conflict, and approval leaves the
+  document registry unchanged
+- A real MCP client test launches the server over stdio, discovers exactly one
+  read-only/non-destructive tool, calls it, rejects an invalid status, and
+  verifies sensitive registry fields are absent
 - CI runs restore, build, and tests on pushes and pull requests
 - Secrets excluded from source control
 
 ## Security Approach
 
-The product handles internal architecture, API, coding-standard, decision, and troubleshooting documents. Current security work includes controlled file paths, PDF validation, secret isolation, and content identity. Authentication, document-level authorization, auditability, and provider data policies remain required before production use.
+The product handles internal architecture, API, coding-standard, decision, and troubleshooting documents. Current security work includes controlled file paths, PDF validation, secret isolation, content identity, metadata-minimized model input, application validation of model plans, and simulation-only approval. Authentication, document-level authorization, durable auditability, and provider data policies remain required before production use.
 
 ## Current Limitations
 
@@ -123,16 +138,15 @@ The product handles internal architecture, API, coding-standard, decision, and t
 - The agent endpoint is unauthenticated, has one read-only tool, relies on
   stored provider response state, has only three non-adversarial versioned
   policy cases, and does not yet persist an audit trail
+- The approval workflow uses an unverified reviewer label, stores proposals
+  only in process memory, and intentionally has no real deletion capability
+- The MCP server is local-only and unauthenticated; it must not be exposed
+  remotely or expanded with write tools before identity and authorization exist
 
 ## Roadmap
 
-The learning strategy is breadth-first, followed by deeper iterations:
-
-1. Add structured outputs and a governed approval simulation
-2. Expand agent evaluation with adversarial and repeated live cases
-3. Build multi-document retrieval metrics and advanced RAG
-4. Explore multimodal AI, MCP, workflow state, and human approval
-5. Explore multi-agent orchestration after single-agent behavior is clear
+The single recommended next milestone is an authentication and
+document-authorization baseline for the API and MCP-sensitive boundaries.
 
 Production hardening remains a separate track and will be prioritized when a
 real client, deployment, or job opportunity creates concrete requirements.
