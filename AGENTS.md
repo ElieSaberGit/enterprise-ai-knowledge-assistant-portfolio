@@ -5,6 +5,12 @@
 Keep portfolio claims synchronized with verified evidence from the private
 implementation and the sibling `company-golden-foundation-private` repository.
 
+Before changing a claim, read the foundation
+`docs/context/PROJECT_CONTROL_INDEX.md`, current architecture, progress tracker,
+current milestone review, and the implementation evidence that supports the
+claim. Never copy production credentials, private host access, customer data or
+administrative contracts into this repository.
+
 ## Method Documentation
 
 If code is introduced, every authored method and constructor must include a
