@@ -98,6 +98,14 @@ Question
 - Strict read-only document-catalog tool with inspectable execution traces
 - Versioned agent policy cases with deterministic structural trace scoring
 - Internal agent evaluation CLI with targeted case execution
+- AI request observability and cost control for every AI provider call: RAG,
+  bounded agent, and structured-action planning, tagged by surface
+- Configurable per-model cost estimation, latency/cost/failure/rolling
+  failure-rate alert thresholds, and a bounded administrator telemetry
+  read endpoint
+- Provider timeout, retry, and circuit-breaker resilience on all four
+  outbound AI provider clients (OpenAI chat, embeddings, Responses API,
+  Qdrant), with retry counts recorded on both recovered and hard failures
 - Strict JSON Schema output for a simulated high-impact document action
 - Application-validated pending, approved, and rejected proposal state
 - Atomic single-decision enforcement and simulation-only approval results
@@ -128,6 +136,7 @@ Question
 - OpenAI API
 - Qdrant
 - Model Context Protocol official C# SDK
+- Microsoft.Extensions.Http.Resilience (timeout, retry, circuit breaker)
 - PdfPig
 - xUnit
 - Docker
@@ -136,9 +145,9 @@ Question
 ## Engineering Evidence
 
 - Clean build with zero compiler warnings
-- Eighty-five automated security, persistence, ingestion, retrieval,
-  evaluation, provider, controller, agent-orchestration, structured-output,
-  approval, catalog, and MCP protocol tests
+- 118 automated security, persistence, ingestion, retrieval, evaluation,
+  provider, controller, agent-orchestration, structured-output, approval,
+  catalog, observability, and MCP protocol tests
 - Duplicate content rejected even under another filename
 - Vector identifiers cannot collide across documents
 - Stable `DocumentId` prevents filename ambiguity in citation evaluation
@@ -172,6 +181,16 @@ Question
   through pinned SSH only after human production approval
 - Hosted trusted-TLS smoke tests prove health, the two-operation Swagger
   contract, anonymous `401`, and public-edge `404` isolation
+- Every AI provider call (RAG, bounded agent, structured-action planning) is
+  measured for latency, token use, estimated cost, outcome, and retry count,
+  live-verified through Swagger against real OpenAI/Qdrant calls, including
+  a recorded edge case where OpenAI returned a dated snapshot model name
+  that the cost estimator's fallback matching still priced correctly
+- Provider timeout/retry/circuit-breaker resilience is live-verified against
+  a real induced Qdrant outage in both directions: a recovered transient
+  failure records a successful outcome with a non-zero retry count, and a
+  sustained outage records a failed outcome that also reports how many
+  attempts were made before giving up
 - Secrets excluded from source control
 
 ## Security Approach
@@ -185,8 +204,11 @@ Production terminates trusted TLS at Nginx, keeps service networks private,
 mounts secrets from protected host files, runs controlled migrations, and has
 verified backup/restore scripts. The public portfolio adds an exact fictional
 document allow-list, a dedicated low-authority role and per-subject rate limit.
-Query observability, provider-data policy evidence and automated rollback remain
-incomplete.
+Every AI provider call is measured (latency, token use, estimated cost, retry
+count, and outcome, with no prompt/answer/document content recorded) and
+protected by timeout/retry/circuit-breaker resilience; both are implemented
+and locally verified but not yet deployed to production. Query audit,
+distributed tracing and automated rollback remain incomplete.
 
 ## Current Limitations
 
@@ -194,8 +216,10 @@ incomplete.
 - The initial retrieval threshold exists, but recall@K and precision@K are not
   yet measured over representative multi-document data
 - The local JSON metadata registry supports only a single application instance
-- Production metrics, distributed traces, query audit, token use and cost
-  telemetry are not yet implemented
+- AI request telemetry (token use, cost, latency, retry count, outcome) and
+  provider resilience are implemented and locally verified but not yet
+  deployed to production; general HTTP request metrics and distributed
+  tracing remain unimplemented
 - The agent endpoint is authenticated and document-scoped but still has one
   read-only tool, relies on stored provider response state, has only three
   non-adversarial policy cases, and does not persist its execution trace
@@ -212,17 +236,18 @@ incomplete.
 
 ## Roadmap
 
-The single recommended next milestone is production AI observability and cost
-control for portfolio queries: model/prompt version, latency, token use,
-estimated cost, outcome and safe failure metrics without logging prompts or
-document content.
+AI request observability/cost control and provider resilience are both
+implemented and locally verified; the next milestone is deploying and
+hosted-verifying them against production, followed by a bounded local-model
+proof of concept (on-device inference for private or cost-sensitive
+requests, routed alongside the existing cloud path) once approved.
 
 ## CI/CD
 
 GitHub Actions implements reusable quality, publication and deployment gates:
 
 - Restore dependencies
-- Verify formatting, warning-free builds, 85 deterministic tests and migrations
+- Verify formatting, warning-free builds, 118 deterministic tests and migrations
 - Validate shell, Keycloak, Compose and deterministic fictional-PDF contracts
 - Build and inspect AMD64 and ARM64 production images
 - Publish SBOM/provenance with a commit tag and immutable digest
