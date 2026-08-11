@@ -43,7 +43,9 @@ flowchart LR
     Keycloak --> API
     MCPClient[MCP Client] --> MCP[Local Read-Only MCP Server]
     API --> Files[Managed PDF Storage]
-    API --> OpenAI[OpenAI Embeddings and Generation]
+    API --> Router[Disabled-by-default AI Router]
+    Router --> OpenAI[OpenAI Embeddings and Generation]
+    Router --> Ollama[Local Ollama Chat Model]
     API --> Qdrant[Qdrant Vector Database]
     API --> Registry[Persistent Document Registry]
     API --> AppDB[PostgreSQL Users Permissions Audit]
@@ -106,6 +108,11 @@ Question
 - Provider timeout, retry, and circuit-breaker resilience on all four
   outbound AI provider clients (OpenAI chat, embeddings, Responses API,
   Qdrant), with retry counts recorded on both recovered and hard failures
+- Local Ollama chat model wrapping Microsoft.Extensions.AI's `IChatClient`
+  abstraction (via OllamaSharp) instead of a hand-written HTTP client,
+  selected per request by a disabled-by-default AI router alongside the
+  cloud model, with its own resilience timeout budget for CPU-bound local
+  inference
 - Strict JSON Schema output for a simulated high-impact document action
 - Application-validated pending, approved, and rejected proposal state
 - Atomic single-decision enforcement and simulation-only approval results
@@ -137,6 +144,8 @@ Question
 - Qdrant
 - Model Context Protocol official C# SDK
 - Microsoft.Extensions.Http.Resilience (timeout, retry, circuit breaker)
+- Microsoft.Extensions.AI / OllamaSharp (local model abstraction)
+- Ollama
 - PdfPig
 - xUnit
 - Docker
@@ -145,7 +154,7 @@ Question
 ## Engineering Evidence
 
 - Clean build with zero compiler warnings
-- 118 automated security, persistence, ingestion, retrieval, evaluation,
+- 123 automated security, persistence, ingestion, retrieval, evaluation,
   provider, controller, agent-orchestration, structured-output, approval,
   catalog, observability, and MCP protocol tests
 - Duplicate content rejected even under another filename
@@ -191,6 +200,13 @@ Question
   failure records a successful outcome with a non-zero retry count, and a
   sustained outage records a failed outcome that also reports how many
   attempts were made before giving up
+- The local Ollama chat path is live-verified end to end through Swagger
+  against a real running model: a genuine grounded RAG answer with the
+  provider and model correctly recorded in observability telemetry, after
+  live testing itself surfaced and fixed two real defaults (a routing
+  threshold too small for real retrieved-context size, and a resilience
+  timeout budget too short for CPU-bound local model loading) before
+  shipping
 - Secrets excluded from source control
 
 ## Security Approach
@@ -207,8 +223,12 @@ document allow-list, a dedicated low-authority role and per-subject rate limit.
 Every AI provider call is measured (latency, token use, estimated cost, retry
 count, and outcome, with no prompt/answer/document content recorded) and
 protected by timeout/retry/circuit-breaker resilience; both are implemented
-and locally verified but not yet deployed to production. Query audit,
-distributed tracing and automated rollback remain incomplete.
+and locally verified but not yet deployed to production. A local Ollama
+model can now answer requests instead of the cloud model, reachable only
+over the private Docker network and disabled by default; it currently
+routes by prompt length only, not by data sensitivity, so runtime guardrails
+are the next milestone before it is enabled in any shared environment.
+Query audit, distributed tracing and automated rollback remain incomplete.
 
 ## Current Limitations
 
@@ -216,10 +236,14 @@ distributed tracing and automated rollback remain incomplete.
 - The initial retrieval threshold exists, but recall@K and precision@K are not
   yet measured over representative multi-document data
 - The local JSON metadata registry supports only a single application instance
-- AI request telemetry (token use, cost, latency, retry count, outcome) and
-  provider resilience are implemented and locally verified but not yet
-  deployed to production; general HTTP request metrics and distributed
-  tracing remain unimplemented
+- AI request telemetry (token use, cost, latency, retry count, outcome),
+  provider resilience, and the local Ollama chat path are implemented and
+  locally verified but not yet deployed to production; general HTTP request
+  metrics and distributed tracing remain unimplemented
+- The AI router selects between local and cloud models by prompt length
+  only; it does not yet consider data sensitivity or task complexity, and
+  the local adapter's retry attempts are not visible in telemetry the way
+  the cloud adapters' are
 - The agent endpoint is authenticated and document-scoped but still has one
   read-only tool, relies on stored provider response state, has only three
   non-adversarial policy cases, and does not persist its execution trace
@@ -236,18 +260,19 @@ distributed tracing and automated rollback remain incomplete.
 
 ## Roadmap
 
-AI request observability/cost control and provider resilience are both
-implemented and locally verified; the next milestone is deploying and
-hosted-verifying them against production, followed by a bounded local-model
-proof of concept (on-device inference for private or cost-sensitive
-requests, routed alongside the existing cloud path) once approved.
+AI request observability/cost control, provider resilience, and a local
+Ollama chat model behind a disabled-by-default router are all implemented
+and locally verified. The next milestone is runtime guardrails (tool-call
+authorization, rate limits, PII and prompt-injection checks) before any of
+these paths — especially the local-model one — are exposed more broadly,
+followed by deploying and hosted-verifying the full set against production.
 
 ## CI/CD
 
 GitHub Actions implements reusable quality, publication and deployment gates:
 
 - Restore dependencies
-- Verify formatting, warning-free builds, 118 deterministic tests and migrations
+- Verify formatting, warning-free builds, 123 deterministic tests and migrations
 - Validate shell, Keycloak, Compose and deterministic fictional-PDF contracts
 - Build and inspect AMD64 and ARM64 production images
 - Publish SBOM/provenance with a commit tag and immutable digest
