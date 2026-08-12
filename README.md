@@ -43,9 +43,11 @@ flowchart LR
     Keycloak --> API
     MCPClient[MCP Client] --> MCP[Local Read-Only MCP Server]
     API --> Files[Managed PDF Storage]
-    API --> Router[Disabled-by-default AI Router]
+    API --> Health[Local Model Health Monitor]
+    API --> Router[AI Router - health aware]
+    Health -.availability.-> Router
     Router --> OpenAI[OpenAI Embeddings and Generation]
-    Router --> Ollama[Local Ollama Chat Model]
+    Router -->|mesh VPN| Ollama[On-Prem Ollama Chat and Embeddings]
     API --> Qdrant[Qdrant Vector Database]
     API --> Registry[Persistent Document Registry]
     API --> AppDB[PostgreSQL Users Permissions Audit]
@@ -110,9 +112,20 @@ Question
   Qdrant), with retry counts recorded on both recovered and hard failures
 - Local Ollama chat model wrapping Microsoft.Extensions.AI's `IChatClient`
   abstraction (via OllamaSharp) instead of a hand-written HTTP client,
-  selected per request by a disabled-by-default AI router alongside the
-  cloud model, with its own resilience timeout budget for CPU-bound local
-  inference
+  selected per request by an AI router alongside the cloud model, with its
+  own resilience timeout budget for CPU-bound local inference; routing is
+  off unless a deployment explicitly opts in
+- Local embeddings and a dedicated local vector collection, so retrieval as
+  well as generation can run without leaving the local machine
+- Automatic failover between local and cloud: a background health monitor
+  detects an unreachable local model and routes every request to the cloud
+  provider, recovering on its own when the local model returns
+- Confidence-based retrieval cascade that consults the cloud tier when
+  local results score below a configured threshold, keeping the better of
+  the two
+- Outbound-only cloud-to-on-prem connector (mesh VPN), letting the deployed
+  cloud application consume inference from a machine behind NAT with no
+  inbound firewall rule and no public exposure of the model
 - Strict JSON Schema output for a simulated high-impact document action
 - Application-validated pending, approved, and rejected proposal state
 - Atomic single-decision enforcement and simulation-only approval results
@@ -146,6 +159,7 @@ Question
 - Microsoft.Extensions.Http.Resilience (timeout, retry, circuit breaker)
 - Microsoft.Extensions.AI / OllamaSharp (local model abstraction)
 - Ollama
+- Tailscale (WireGuard mesh VPN for the cloud-to-on-prem connector)
 - PdfPig
 - xUnit
 - Docker
@@ -154,7 +168,7 @@ Question
 ## Engineering Evidence
 
 - Clean build with zero compiler warnings
-- 123 automated security, persistence, ingestion, retrieval, evaluation,
+- 151 automated security, persistence, ingestion, retrieval, evaluation,
   provider, controller, agent-orchestration, structured-output, approval,
   catalog, observability, and MCP protocol tests
 - Duplicate content rejected even under another filename
@@ -207,6 +221,21 @@ Question
   threshold too small for real retrieved-context size, and a resilience
   timeout budget too short for CPU-bound local model loading) before
   shipping
+- The fully local retrieval path is live-verified: a document indexed with
+  local embeddings into the local collection, then answered from a question
+  embedded and searched locally, with zero cloud calls, confirmed directly
+  against the vector database rather than from application logs
+- Automatic failover is live-verified across the full cycle: local model
+  serving, stopped mid-session, the health monitor detecting it within one
+  interval, a real question answered by the cloud provider with no
+  user-visible failure, then automatic recovery without a restart
+- The cloud-to-on-prem connector is verified in production: the deployed
+  Google Cloud host reaches an on-premises model over an outbound-only mesh
+  VPN, with no inbound firewall rule and no public exposure of the model
+- The retrieval cascade's confidence threshold was corrected after live
+  measurement disproved the original design: an emptiness-based fallback
+  could never fire, because the local embedding model scored a question
+  about an entirely unrelated subject at 0.466 against the indexed corpus
 - Secrets excluded from source control
 
 ## Security Approach
@@ -222,13 +251,17 @@ verified backup/restore scripts. The public portfolio adds an exact fictional
 document allow-list, a dedicated low-authority role and per-subject rate limit.
 Every AI provider call is measured (latency, token use, estimated cost, retry
 count, and outcome, with no prompt/answer/document content recorded) and
-protected by timeout/retry/circuit-breaker resilience; both are implemented
-and locally verified but not yet deployed to production. A local Ollama
-model can now answer requests instead of the cloud model, reachable only
-over the private Docker network and disabled by default; it currently
-routes by prompt length only, not by data sensitivity, so runtime guardrails
-are the next milestone before it is enabled in any shared environment.
-Query audit, distributed tracing and automated rollback remain incomplete.
+protected by timeout/retry/circuit-breaker resilience. An on-premises model
+can answer requests instead of the cloud model, reached over an
+outbound-only mesh VPN that requires no inbound firewall rule and never
+exposes the model publicly. That connector is a device-authenticated
+boundary: prompt content crosses it protected by transport encryption, so
+an on-premises model inherits the same data-sensitivity considerations as
+any other provider rather than being automatically safer for being local.
+Routing selects by prompt length and availability, not yet by data
+sensitivity, so runtime guardrails remain a prerequisite before broader
+exposure. Query audit, distributed tracing and automated rollback remain
+incomplete.
 
 ## Current Limitations
 
@@ -236,14 +269,25 @@ Query audit, distributed tracing and automated rollback remain incomplete.
 - The initial retrieval threshold exists, but recall@K and precision@K are not
   yet measured over representative multi-document data
 - The local JSON metadata registry supports only a single application instance
-- AI request telemetry (token use, cost, latency, retry count, outcome),
-  provider resilience, and the local Ollama chat path are implemented and
-  locally verified but not yet deployed to production; general HTTP request
-  metrics and distributed tracing remain unimplemented
-- The AI router selects between local and cloud models by prompt length
-  only; it does not yet consider data sensitivity or task complexity, and
-  the local adapter's retry attempts are not visible in telemetry the way
-  the cloud adapters' are
+- AI request telemetry (token use, cost, latency, retry count, outcome) and
+  provider resilience are implemented and locally verified but not yet
+  exercised against production traffic; general HTTP request metrics and
+  distributed tracing remain unimplemented
+- The AI router selects between local and cloud models by prompt length and
+  current local availability; it does not yet consider data sensitivity or
+  task complexity, and the local adapter's retry attempts are not visible
+  in telemetry the way the cloud adapters' are
+- The retrieval cascade's confidence threshold is configurable but not yet
+  calibrated against the evaluation dataset, and it compares similarity
+  scores across two embedding models whose scales are not strictly
+  comparable; a reranker is the recorded principled improvement
+- The deployed environment runs local chat with cloud retrieval, because
+  its local vector collection is provisioned but intentionally empty;
+  populating it requires indexing documents through the local tier
+- The on-prem connector is a device-authenticated VPN without per-service
+  access control lists, and the local model endpoint has no authentication
+  of its own — acceptable for a single-owner network, insufficient for a
+  shared or client network
 - The agent endpoint is authenticated and document-scoped but still has one
   read-only tool, relies on stored provider response state, has only three
   non-adversarial policy cases, and does not persist its execution trace
@@ -260,19 +304,26 @@ Query audit, distributed tracing and automated rollback remain incomplete.
 
 ## Roadmap
 
-AI request observability/cost control, provider resilience, and a local
-Ollama chat model behind a disabled-by-default router are all implemented
-and locally verified. The next milestone is runtime guardrails (tool-call
-authorization, rate limits, PII and prompt-injection checks) before any of
-these paths — especially the local-model one — are exposed more broadly,
-followed by deploying and hosted-verifying the full set against production.
+Hybrid local/cloud AI is now running in the deployed environment: chat
+requests route to an on-premises model over an outbound-only mesh VPN, with
+automatic failover to the cloud provider whenever that model is
+unreachable. Retrieval currently uses the cloud tier in the deployed
+environment, since its local collection is intentionally empty.
+
+The next milestone packages the assembled capability — application, local
+model, retrieval, cloud fallback, authentication and audit, routing, and
+deployment support — as one hybrid solution, with hardware selection
+deliberately deferred until a real client's scale, latency, and budget are
+known. A demo-facing client interface follows, then runtime guardrails
+(tool-call authorization, rate limits, PII and prompt-injection checks)
+before any of these paths are exposed more broadly.
 
 ## CI/CD
 
 GitHub Actions implements reusable quality, publication and deployment gates:
 
 - Restore dependencies
-- Verify formatting, warning-free builds, 123 deterministic tests and migrations
+- Verify formatting, warning-free builds, 151 deterministic tests and migrations
 - Validate shell, Keycloak, Compose and deterministic fictional-PDF contracts
 - Build and inspect AMD64 and ARM64 production images
 - Publish SBOM/provenance with a commit tag and immutable digest
