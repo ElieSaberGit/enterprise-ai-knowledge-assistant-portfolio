@@ -229,9 +229,18 @@ Question
   serving, stopped mid-session, the health monitor detecting it within one
   interval, a real question answered by the cloud provider with no
   user-visible failure, then automatic recovery without a restart
+- Local model selection is driven by measured answer quality rather than
+  size or speed: a 1.5B model answered a grounded question in 1.6 seconds
+  but contradicted its own citations, while a 3B model answered correctly
+  in 10-19 seconds warm. The larger model was adopted deliberately, with
+  the resulting latency accepted and recorded rather than hidden
 - The cloud-to-on-prem connector is verified in production: the deployed
   Google Cloud host reaches an on-premises model over an outbound-only mesh
   VPN, with no inbound firewall rule and no public exposure of the model
+- End-to-end hybrid operation is verified through the deployed public
+  surface: a governance question about prompt-injection controls returned
+  four correct controls with accurate citations, served by the on-premises
+  model in 57.6 seconds, with the provider and model recorded in telemetry
 - The retrieval cascade's confidence threshold was corrected after live
   measurement disproved the original design: an emptiness-based fallback
   could never fire, because the local embedding model scored a question
@@ -284,6 +293,12 @@ incomplete.
 - The deployed environment runs local chat with cloud retrieval, because
   its local vector collection is provisioned but intentionally empty;
   populating it requires indexing documents through the local tier
+- Local inference latency is not interactive on the current demonstration
+  hardware: a grounded answer takes roughly 57 seconds on a CPU-only 2017
+  ultrabook, against about 5 seconds for the same question served by the
+  cloud provider. This is a hardware limitation rather than an
+  architectural one, and is accepted deliberately so the hybrid path stays
+  genuinely active rather than demonstrable only on request
 - The on-prem connector is a device-authenticated VPN without per-service
   access control lists, and the local model endpoint has no authentication
   of its own — acceptable for a single-owner network, insufficient for a
@@ -310,13 +325,24 @@ automatic failover to the cloud provider whenever that model is
 unreachable. Retrieval currently uses the cloud tier in the deployed
 environment, since its local collection is intentionally empty.
 
-The next milestone packages the assembled capability — application, local
-model, retrieval, cloud fallback, authentication and audit, routing, and
-deployment support — as one hybrid solution, with hardware selection
-deliberately deferred until a real client's scale, latency, and budget are
-known. A demo-facing client interface follows, then runtime guardrails
-(tool-call authorization, rate limits, PII and prompt-injection checks)
-before any of these paths are exposed more broadly.
+The assembled capability — application, local model, retrieval, cloud
+fallback, authentication and audit, routing, and deployment support — is
+now positioned as one hybrid solution, with hardware selection deliberately
+deferred until a real client's scale, latency, and budget are known.
+Measured evidence for that deferral: a 3B model answers a grounded question
+correctly in roughly 57 seconds on a 2017 ultrabook CPU with no usable GPU,
+which proves the architecture but is not interactive. Larger models are
+proportionally slower on CPU and smaller ones trade away correctness, so a
+GPU is the fix rather than a different model.
+
+Routing today selects by prompt size and model availability, not by data
+classification. A requirement such as "regulated data must never leave the
+building" needs that classification layer built first, and is not claimed
+as already satisfied.
+
+Next is a demo-facing client interface, then runtime guardrails (tool-call
+authorization, rate limits, PII and prompt-injection checks) before any of
+these paths are exposed more broadly.
 
 ## CI/CD
 
