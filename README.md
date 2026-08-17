@@ -1,371 +1,331 @@
-﻿# Enterprise AI Knowledge Assistant
+# Enterprise AI Knowledge Assistant
 
-A production-oriented Retrieval-Augmented Generation (RAG) project designed to help developers, technical leads, and architects find trustworthy answers in internal company documentation.
+A production-oriented Retrieval-Augmented Generation system that answers
+questions from internal company documents, shows the evidence behind every
+answer, and lets an administrator decide **which models are allowed to answer
+which people**.
 
-> The source repository is private. Access can be provided to recruiters or technical reviewers upon request.
+> The implementation repository is private. Access can be provided to
+> recruiters or technical reviewers on request.
 
-## Protected Live Demonstration
+![A grounded answer with its provenance: answered on-premises by qwen2.5:3b in 4.4 seconds at zero provider cost, with five citations](docs/screenshots/04-ask-answered.png)
 
-The Google Cloud production portfolio exposes a Keycloak-protected Swagger page
-containing exactly:
+Everything in that bar under the answer is the product's argument. The
+question was answered **on the organization's own hardware**, by a named
+model, in a measured time, at a cost of nothing, from five citable sources —
+and the user can see all of it without asking anyone.
+
+---
+
+## The problem this is built for
+
+Enterprise buyers have been burned. Reporting through 2026 puts roughly 95% of
+generative-AI pilots at no measurable profit-and-loss impact, so a polished
+demonstration now increases suspicion rather than reducing it. Two things
+reduce it: provable numbers, and being able to see what the system did.
+
+Two further constraints shaped the design:
+
+- **"Saves four hours a week" has stopped working as a pitch**, because saved
+  hours do not appear in a budget. Cost per request, and the difference between
+  cloud and local for the same request, do.
+- **Some questions must not leave the building.** Not as a preference — as a
+  condition of the system being usable at all.
+
+---
+
+## Three things worth looking at
+
+### 1. Model access policy — who may be answered by what
+
+![The model access screen: the reader role restricted to any local model, with the consequence stated in plain language; the administrator role permitted local plus one priced cloud model](docs/screenshots/06-policy.png)
+
+An administrator maps roles — and individually named users, as documented
+exceptions — to the providers and models permitted to answer them. The
+sentence under each row states the consequence in the terms the decision is
+actually made in:
+
+> *Questions never leave the building. If the local model is unreachable,
+> requests are refused rather than sent to a cloud provider.*
+
+**The policy is enforced inside the AI router, not in the client.** Hiding a
+model in a dropdown is decoration; anyone holding a valid token and a shell
+bypasses it. Because enforcement sits where every authenticated request
+already funnels through, there is no second path around it.
+
+Policy outranks the routing preference in **both** directions:
+
+| Routing would choose | Policy permits | Result |
+| --- | --- | --- |
+| Local (short prompt) | Cloud only | Cloud, flagged as redirected by policy |
+| Cloud (long prompt) | Local only | **Local**, flagged as redirected by policy |
+| Either | Local only, local unreachable | **Refused** — nothing sent to any cloud |
+| Local, then local fails mid-request | Local only | **Refused** — the fallback is policy-aware |
+| Either | Nothing that can answer | **Refused** before any provider is called |
+
+The fourth row is the one that took the most care. A local model that accepts
+a request and then dies is the likeliest real-world failure, and the existing
+"retry against the cloud" fallback would have defeated the policy on exactly
+the request it was written for.
+
+A refusal is recorded as its own outcome rather than as a failure, so a
+correctly restrictive policy never makes the service look unreliable, and it
+writes an audit entry naming the caller. *"Their questions never left the
+building"* is a query, not a claim.
+
+### 2. Cost, and what running locally avoided spending
+
+![The cost and usage screen: cloud spend against on-premises spend for the same window, the avoided-spend estimate with its caveat, and a warning that eight requests used an unpriced model](docs/screenshots/07-usage.png)
+
+Cloud spend and on-premises spend for the same workload, side by side, plus
+the figure a budget holder actually acts on: **what the locally answered
+requests would have cost on the cloud model**, computed from their measured
+token counts.
+
+It is labelled as an estimate, and it names the model it was priced against so
+the number can be checked rather than trusted. Three deliberate refusals to
+overstate:
+
+- When the comparison model has no configured price, the screen claims **no
+  saving at all** rather than showing a zero. "We cannot say" and "it saves
+  nothing" are different claims.
+- Requests using an unpriced model are **called out wherever they affect a
+  total**, including per row. A spend figure quietly missing requests is worse
+  than one that admits what it excludes.
+- The threshold panel appears **only when something actually breached**. A
+  permanently visible panel of zeroes teaches a reader to ignore the place
+  warnings appear.
+
+### 3. A model may propose, but not execute
+
+![The agent screen: a tool-execution trace and a structured deletion proposal awaiting an explicit human decision, with a prominent simulation-only notice](docs/screenshots/09-agent.png)
+
+The bounded agent shows every tool call with the arguments the model sent and
+what came back, unmodified — pretty-printed only when the payload is valid
+JSON, and left exactly as received when it is not, because a trace that
+silently rewrites what the model sent is worth less than no trace.
+
+High-impact actions are drafted as structured proposals carrying the model's
+own stated reason and risk summary, and require an explicit human approve or
+reject. The simulation notice is prominent and never conditional on anything
+the model said: a reviewer pressing approve must know, without reading
+closely, that nothing is about to be deleted.
+
+---
+
+## The rest of the interface
+
+| | |
+| --- | --- |
+| ![Sign-in page](docs/screenshots/02-login.png) | **Sign-in.** Keycloak OIDC with PKCE, themed to match the application so the identity provider does not read as a seam between two systems. Restyled with CSS over Keycloak's own theme, with no template overridden — a copied template is a fork of Keycloak's login markup that stops receiving upstream fixes. |
+| ![Control screen](docs/screenshots/05-control.png) | **Control.** Hybrid routing, model selection and thresholds, changed without a redeployment. Cloud models are restricted to those with known pricing so cost estimation cannot silently return null; local models are listed from what the model host actually has installed. Every change writes an audit entry. |
+| ![Audit screen](docs/screenshots/08-audit.png) | **Audit & permissions.** Documents with live indexing status, a per-user document grant matrix, and a timeline of every grant, revoke, approval and configuration change — with the actor named rather than shown as an identifier. |
+
+---
+
+## Live demonstration
+
+A Keycloak-protected Swagger page on the deployed Google Cloud environment
+exposes exactly two operations:
 
 ```text
 GET  /api/portfolio/documents
 POST /api/portfolio/ask
 ```
 
-Review access is privately shared and revocable. The reviewer identity has only
-the `portfolio-demo` role, the API can retrieve only two deterministic fictional
-Northstar Labs documents, and requests are limited to 10 per authenticated
-subject every 60 seconds. Normal reader, learning and administrative APIs are
-not published at the production edge.
+Review access is privately shared and revocable. The reviewer identity holds
+only the `portfolio-demo` role, the API can reach only two deterministic
+fictional documents, and requests are limited to 10 per authenticated subject
+every 60 seconds. Reader, learning and administrative APIs are not published
+at the production edge.
 
-## Business Problem
+---
 
-Engineering knowledge is often fragmented across architecture documents, API references, coding standards, decision records, and troubleshooting guides. Finding an accurate answer is slow, and ordinary search does not explain which source supports it.
-
-## Product Goal
-
-Provide concise answers grounded in authorized company documents, with inspectable citations containing the document, page, and chunk. When evidence is insufficient, the assistant should refuse to invent an answer.
-
-## Target Users
-
-- Developers
-- Technical leads
-- Software and enterprise architects
-
-## Current Architecture
+## Architecture
 
 ```mermaid
 flowchart LR
-    Client[API Client] --> Keycloak[Keycloak OIDC]
-    Client --> API[ASP.NET Core API]
+    Web[React SPA] --> Keycloak[Keycloak OIDC/PKCE]
+    Web --> API[ASP.NET Core API]
+    Client[API Client] --> API
     Keycloak --> API
     MCPClient[MCP Client] --> MCP[Local Read-Only MCP Server]
-    API --> Files[Managed PDF Storage]
+    API --> Policy[Model Access Policy]
+    Policy --> Router[AI Router]
     API --> Health[Local Model Health Monitor]
-    API --> Router[AI Router - health aware]
     Health -.availability.-> Router
     Router --> OpenAI[OpenAI Embeddings and Generation]
     Router -->|mesh VPN| Ollama[On-Prem Ollama Chat and Embeddings]
     API --> Qdrant[Qdrant Vector Database]
+    API --> Files[Managed PDF Storage]
     API --> Registry[Persistent Document Registry]
-    API --> AppDB[PostgreSQL Users Permissions Audit]
+    API --> AppDB[PostgreSQL Users Permissions Audit Telemetry]
     Keycloak --> IdentityDB[PostgreSQL Identity State]
     MCP --> Registry
 ```
 
-### Ingestion
+Two decisions in that diagram carry most of the weight. **Model access policy
+sits in front of the router**, so it constrains provider selection rather than
+merely reporting on it. **The health monitor feeds the router**, so an
+unreachable local model degrades to the cloud automatically — except where
+policy forbids it, in which case the request is refused instead.
 
-```text
-Validate PDF
-→ calculate content identity
-→ extract page text
-→ create overlapping chunks
-→ generate embeddings
-→ batch vectors into Qdrant
-→ persist indexing status
-```
-
-### Question Answering
+### Question answering
 
 ```text
 Question
 → validate OIDC access token
 → resolve explicit document permissions
-→ create question embedding
-→ retrieve only authorized chunks
+→ embed the question and retrieve only authorized chunks
+→ resolve the caller's permitted models
+→ select a permitted provider, or refuse
 → generate a grounded answer
-→ return document/page/chunk citations
+→ return citations, provider, model, latency and cost
 ```
 
-## Implemented Capabilities
+---
 
-- PDF upload and validation
-- Page-level text extraction
-- Fixed-size overlapping chunking
-- OpenAI embeddings and grounded generation
-- Qdrant semantic retrieval
-- Source citations
-- Content-based duplicate prevention
-- Stable document and vector identifiers
-- Restart-safe ingestion metadata
-- Recoverable indexing status
-- Batched vector writes
-- Versioned RAG evaluation dataset
-- Deterministic fact, stable-document citation, and refusal scoring
-- Cost-aware evaluation CLI with targeted case execution
-- End-to-end evaluation latency measurement
-- Automated build and tests with GitHub Actions
-- Configurable Qdrant retrieval threshold with explicit no-evidence refusal
-- Bounded single-tool agent workflow using the OpenAI Responses API
-- Strict read-only document-catalog tool with inspectable execution traces
-- Versioned agent policy cases with deterministic structural trace scoring
-- Internal agent evaluation CLI with targeted case execution
-- AI request observability and cost control for every AI provider call: RAG,
-  bounded agent, and structured-action planning, tagged by surface
-- Configurable per-model cost estimation, latency/cost/failure/rolling
-  failure-rate alert thresholds, and a bounded administrator telemetry
-  read endpoint
-- Provider timeout, retry, and circuit-breaker resilience on all four
-  outbound AI provider clients (OpenAI chat, embeddings, Responses API,
-  Qdrant), with retry counts recorded on both recovered and hard failures
-- Local Ollama chat model wrapping Microsoft.Extensions.AI's `IChatClient`
-  abstraction (via OllamaSharp) instead of a hand-written HTTP client,
-  selected per request by an AI router alongside the cloud model, with its
-  own resilience timeout budget for CPU-bound local inference; routing is
-  off unless a deployment explicitly opts in
-- Local embeddings and a dedicated local vector collection, so retrieval as
-  well as generation can run without leaving the local machine
-- Automatic failover between local and cloud: a background health monitor
-  detects an unreachable local model and routes every request to the cloud
-  provider, recovering on its own when the local model returns
-- Confidence-based retrieval cascade that consults the cloud tier when
-  local results score below a configured threshold, keeping the better of
-  the two
-- Outbound-only cloud-to-on-prem connector (mesh VPN), letting the deployed
-  cloud application consume inference from a machine behind NAT with no
-  inbound firewall rule and no public exposure of the model
-- Strict JSON Schema output for a simulated high-impact document action
-- Application-validated pending, approved, and rejected proposal state
-- Atomic single-decision enforcement and simulation-only approval results
-- Local stdio MCP server with one safe `find_documents` tool
-- Shared protocol-neutral catalog query used by both agent and MCP adapters
-- Portable Keycloak OIDC authentication with strict JWT validation
-- EF Core and PostgreSQL identity links, document permissions, and audit events
-- Administrator policies for ingestion, permissions, and governed actions
-- Document scope enforced through listing, RAG, Qdrant, and agent tools
-- Docker Compose topology for API, Keycloak, separate PostgreSQL databases, and
-  Qdrant
-- Production Nginx TLS edge with private backend networks and file-mounted
-  secrets
-- Controlled EF migration, Qdrant, Keycloak and fictional-corpus initialization
-  jobs
-- Verified backup and restore automation with checksums and public smoke tests
-- Dual-platform AMD64/ARM64 GHCR image with SBOM, provenance and immutable
-  digest deployment
-- Protected production Swagger with a dedicated role, exact fictional scope,
-  rate limiting and no administrative exposure
+## Technology
 
-## Technology Stack
+C# and .NET 10 LTS · ASP.NET Core · React, TypeScript, Vite, Tailwind ·
+Keycloak and OpenID Connect · PostgreSQL with EF Core · Qdrant · OpenAI ·
+Ollama with Microsoft.Extensions.AI · Tailscale (WireGuard mesh VPN) ·
+Model Context Protocol C# SDK · Microsoft.Extensions.Http.Resilience ·
+PdfPig · xUnit · Docker · GitHub Actions
 
-- C# and .NET 10 LTS
-- ASP.NET Core Web API
-- Keycloak and OpenID Connect
-- PostgreSQL with EF Core and Npgsql
-- OpenAI API
-- Qdrant
-- Model Context Protocol official C# SDK
-- Microsoft.Extensions.Http.Resilience (timeout, retry, circuit breaker)
-- Microsoft.Extensions.AI / OllamaSharp (local model abstraction)
-- Ollama
-- Tailscale (WireGuard mesh VPN for the cloud-to-on-prem connector)
-- PdfPig
-- xUnit
-- Docker
-- GitHub Actions
+---
 
-## Engineering Evidence
+## Engineering evidence
 
-- Clean build with zero compiler warnings
-- 151 automated security, persistence, ingestion, retrieval, evaluation,
-  provider, controller, agent-orchestration, structured-output, approval,
-  catalog, observability, and MCP protocol tests
-- Duplicate content rejected even under another filename
-- Vector identifiers cannot collide across documents
-- Stable `DocumentId` prevents filename ambiguity in citation evaluation
-- Five-case live OpenAI/Qdrant baseline recorded with fact, citation, refusal, and latency evidence
-- Six retrieval thresholds evaluated; the current `0.20` default preserved the
-  5/5 baseline at 1,926 ms average latency
-- Agent tests prove strict provider mapping, bounded execution, single-call
-  policy, status/name filtering, and exclusion of local paths and content hashes
-- Agent policy tests prove exact tool selection and stopping expectations,
-  recursive sensitive-metadata checks, unknown-tool rejection, safe tool
-  failures, malformed/incomplete provider rejection, and DI composition
-- A live two-turn Responses API run invoked `find_documents`, returned two
-  indexed documents, and produced a completed answer with an execution trace
-- Swagger verification proved a structured deletion proposal requires a
-  separate decision, repeated decisions conflict, and approval leaves the
-  document registry unchanged
-- A real MCP client test launches the server over stdio, discovers exactly one
-  read-only/non-destructive tool, calls it, rejects an invalid status, and
-  verifies sensitive registry fields are absent
-- Security tests prove strict issuer/audience/signature/lifetime validation,
-  fail-closed endpoint policy, stable issuer/subject user links, idempotent
-  grants, durable audit, empty-scope refusal, and Qdrant provider-output checks
-- EF migration discovery, model comparison, and idempotent PostgreSQL SQL
-  generation are verified
-- Keycloak, PostgreSQL, Qdrant, API and Nginx run in the verified production
-  Compose topology on Google Cloud
-- Hosted quality gates verify formatting, warning-free builds, deterministic
-  tests and PDFs, migrations, shell/Keycloak/Compose contracts, and AMD64/ARM64
-  production images
-- The protected workflow publishes an immutable GHCR digest and deploys it
-  through pinned SSH only after human production approval
-- Hosted trusted-TLS smoke tests prove health, the two-operation Swagger
-  contract, anonymous `401`, and public-edge `404` isolation
-- Every AI provider call (RAG, bounded agent, structured-action planning) is
-  measured for latency, token use, estimated cost, outcome, and retry count,
-  live-verified through Swagger against real OpenAI/Qdrant calls, including
-  a recorded edge case where OpenAI returned a dated snapshot model name
-  that the cost estimator's fallback matching still priced correctly
-- Provider timeout/retry/circuit-breaker resilience is live-verified against
-  a real induced Qdrant outage in both directions: a recovered transient
-  failure records a successful outcome with a non-zero retry count, and a
-  sustained outage records a failed outcome that also reports how many
-  attempts were made before giving up
-- The local Ollama chat path is live-verified end to end through Swagger
-  against a real running model: a genuine grounded RAG answer with the
-  provider and model correctly recorded in observability telemetry, after
-  live testing itself surfaced and fixed two real defaults (a routing
-  threshold too small for real retrieved-context size, and a resilience
-  timeout budget too short for CPU-bound local model loading) before
-  shipping
-- The fully local retrieval path is live-verified: a document indexed with
-  local embeddings into the local collection, then answered from a question
-  embedded and searched locally, with zero cloud calls, confirmed directly
-  against the vector database rather than from application logs
-- Automatic failover is live-verified across the full cycle: local model
-  serving, stopped mid-session, the health monitor detecting it within one
-  interval, a real question answered by the cloud provider with no
-  user-visible failure, then automatic recovery without a restart
-- Local model selection is driven by measured answer quality rather than
-  size or speed: a 1.5B model answered a grounded question in 1.6 seconds
-  but contradicted its own citations, while a 3B model answered correctly
-  in 10-19 seconds warm. The larger model was adopted deliberately, with
-  the resulting latency accepted and recorded rather than hidden
-- The cloud-to-on-prem connector is verified in production: the deployed
-  Google Cloud host reaches an on-premises model over an outbound-only mesh
-  VPN, with no inbound firewall rule and no public exposure of the model
-- End-to-end hybrid operation is verified through the deployed public
-  surface: a governance question about prompt-injection controls returned
-  four correct controls with accurate citations, served by the on-premises
-  model in 57.6 seconds, with the provider and model recorded in telemetry
-- The retrieval cascade's confidence threshold was corrected after live
-  measurement disproved the original design: an emptiness-based fallback
-  could never fire, because the local embedding model scored a question
-  about an entirely unrelated subject at 0.466 against the indexed corpus
-- Secrets excluded from source control
+- **216 automated tests** covering security, persistence, ingestion,
+  retrieval, evaluation, providers, controllers, agent orchestration,
+  structured output, approvals, model access policy, cost aggregation,
+  observability and MCP protocol behavior. Warning-free builds.
+- **Quality gates on every pull request in both repositories**: formatting,
+  warning-free builds, deterministic tests, migration model verification,
+  shell/Keycloak/Compose contract checks, AMD64 and ARM64 production images,
+  and lint/type-check/build for the web application.
+- **Deployment publishes an immutable GHCR digest** with SBOM and provenance,
+  and deploys only reviewed `main` through a protected environment after human
+  approval, gated on initialization, readiness and trusted-TLS smoke tests.
 
-## Security Approach
+### Verified against a running system, not asserted
 
-The product handles internal architecture, API, coding-standard, decision, and
-troubleshooting documents. Keycloak authenticates users without the application
-storing passwords. The API validates OIDC access tokens and owns document
-authorization in PostgreSQL. Authorization is enforced before catalog, vector,
-RAG, and agent access; permission changes and governed decisions are audited.
-Production terminates trusted TLS at Nginx, keeps service networks private,
-mounts secrets from protected host files, runs controlled migrations, and has
-verified backup/restore scripts. The public portfolio adds an exact fictional
-document allow-list, a dedicated low-authority role and per-subject rate limit.
-Every AI provider call is measured (latency, token use, estimated cost, retry
-count, and outcome, with no prompt/answer/document content recorded) and
-protected by timeout/retry/circuit-breaker resilience. An on-premises model
-can answer requests instead of the cloud model, reached over an
-outbound-only mesh VPN that requires no inbound firewall rule and never
-exposes the model publicly. That connector is a device-authenticated
-boundary: prompt content crosses it protected by transport encryption, so
-an on-premises model inherits the same data-sensitivity considerations as
-any other provider rather than being automatically safer for being local.
-Routing selects by prompt length and availability, not yet by data
-sensitivity, so runtime guardrails remain a prerequisite before broader
-exposure. Query audit, distributed tracing and automated rollback remain
-incomplete.
+Each of these was exercised end to end rather than inferred from tests:
 
-## Current Limitations
+- **A policy refusal.** With a role restricted to the local model and that
+  model stopped, a question returned `403` with nothing sent to any cloud
+  provider, recorded as a policy denial in telemetry and an audit event
+  naming the caller. With the model running, the same policy kept a prompt too
+  long for local routing on the local model anyway.
+- **The full local retrieval path.** A document indexed with local embeddings
+  into the local vector collection, then answered from a question embedded and
+  searched locally, with zero cloud calls — confirmed directly against the
+  vector database rather than from application logs.
+- **Automatic failover, both directions.** Local model serving, stopped
+  mid-session, detected within one health interval, a real question answered
+  by the cloud provider with no user-visible failure, then automatic recovery
+  without a restart.
+- **Provider resilience under a real induced outage.** A recovered transient
+  failure records a successful outcome with a non-zero retry count; a sustained
+  outage records a failure that still reports how many attempts were made.
+- **The cloud-to-on-prem connector in production.** The deployed Google Cloud
+  host reaches an on-premises model over an outbound-only mesh VPN, with no
+  inbound firewall rule and no public exposure of the model.
+- **Hybrid operation through the deployed public surface.** A governance
+  question returned four correct controls with accurate citations, served by
+  the on-premises model, with provider and model recorded in telemetry.
 
-- The first baseline is limited to five cases over one document and exact text matching
-- The initial retrieval threshold exists, but recall@K and precision@K are not
-  yet measured over representative multi-document data
-- The local JSON metadata registry supports only a single application instance
-- AI request telemetry (token use, cost, latency, retry count, outcome) and
-  provider resilience are implemented and locally verified but not yet
-  exercised against production traffic; general HTTP request metrics and
-  distributed tracing remain unimplemented
-- The AI router selects between local and cloud models by prompt length and
-  current local availability; it does not yet consider data sensitivity or
-  task complexity, and the local adapter's retry attempts are not visible
-  in telemetry the way the cloud adapters' are
-- The retrieval cascade's confidence threshold is configurable but not yet
-  calibrated against the evaluation dataset, and it compares similarity
-  scores across two embedding models whose scales are not strictly
-  comparable; a reranker is the recorded principled improvement
-- The deployed environment runs local chat with cloud retrieval, because
-  its local vector collection is provisioned but intentionally empty;
-  populating it requires indexing documents through the local tier
-- Local inference latency is not interactive on the current demonstration
-  hardware: a grounded answer takes roughly 57 seconds on a CPU-only 2017
-  ultrabook, against about 5 seconds for the same question served by the
-  cloud provider. This is a hardware limitation rather than an
-  architectural one, and is accepted deliberately so the hybrid path stays
-  genuinely active rather than demonstrable only on request
-- The on-prem connector is a device-authenticated VPN without per-service
-  access control lists, and the local model endpoint has no authentication
-  of its own — acceptable for a single-owner network, insufficient for a
-  shared or client network
-- The agent endpoint is authenticated and document-scoped but still has one
-  read-only tool, relies on stored provider response state, has only three
-  non-adversarial policy cases, and does not persist its execution trace
-- The approval workflow uses authenticated reviewer identity and durable
-  decision audit but stores proposals only in process memory and intentionally
-  has no real deletion capability
-- The MCP server is local-only and OS-trusted; it reads the whole local registry
-  and must not be exposed remotely
-- The portfolio reviewer credential is shared and the in-memory rate limiter
-  resets on API restart, so this is a bounded single-instance demonstration
-- Automatic release rollback and multi-host availability are not implemented
-- Backup/restore automation exists, but encrypted off-host scheduling and timed
-  recovery objectives remain to be demonstrated continuously
+### What live testing changed
 
-## Roadmap
+Live verification has found something the test suite could not at **five
+consecutive milestones**, including this one. Most of these were not logic
+errors that better unit tests would have caught — they were assumptions about
+what the outside world actually emits, or about which path a real user takes.
 
-Hybrid local/cloud AI is now running in the deployed environment: chat
-requests route to an on-premises model over an outbound-only mesh VPN, with
-automatic failover to the cloud provider whenever that model is
-unreachable. Retrieval currently uses the cloud tier in the deployed
-environment, since its local collection is intentionally empty.
+- A routing threshold measured the bare question rather than the full
+  retrieved-context prompt, so it never fired in practice.
+- A resilience timeout budget tuned for cloud latency killed CPU-bound local
+  inference that was still working.
+- A retrieval cascade designed to fall back on empty results could never fire,
+  because the local embedding model scored a question about an entirely
+  unrelated subject at 0.466 against the corpus.
+- A 1.5B local model answered a grounded question in 1.6 seconds but
+  contradicted its own citations; a 3B model answered correctly and was adopted
+  with the added latency accepted and recorded rather than hidden.
+- Every request was recording the identity provider's own bookkeeping roles
+  alongside the application's, which made per-role spend unreadable and
+  provider-specific.
+- Deep-linking to an administrator screen bounced to the default page, because
+  those routes mount only after a capability check resolves. Found by loading a
+  URL directly — which is how a returning user arrives — rather than by
+  clicking through.
 
-The assembled capability — application, local model, retrieval, cloud
-fallback, authentication and audit, routing, and deployment support — is
-now positioned as one hybrid solution, with hardware selection deliberately
-deferred until a real client's scale, latency, and budget are known.
-Measured evidence for that deferral: a 3B model answers a grounded question
-correctly in roughly 57 seconds on a 2017 ultrabook CPU with no usable GPU,
-which proves the architecture but is not interactive. Larger models are
-proportionally slower on CPU and smaller ones trade away correctness, so a
-GPU is the fix rather than a different model.
+---
 
-Routing today selects by prompt size and model availability, not by data
-classification. A requirement such as "regulated data must never leave the
-building" needs that classification layer built first, and is not claimed
-as already satisfied.
+## What this does not do
 
-Next is a demo-facing client interface, then runtime guardrails (tool-call
-authorization, rate limits, PII and prompt-injection checks) before any of
-these paths are exposed more broadly.
+Stated because a system's limits are part of its specification, and being
+first to name one is the cheapest way to control how it is discussed.
 
-## CI/CD
+- **Routing does not classify data.** Model access policy narrows *who* may
+  reach *which model*; it does not inspect *what is being sent*. A requirement
+  such as "regulated data must never leave the building" needs a
+  classification layer built first, and is not claimed as satisfied.
+- **Runtime guardrails are not built.** No PII detection, no prompt-injection
+  checking, no post-action validation of what an agent did.
+- **Local inference is not interactive on the demonstration hardware.** A
+  grounded answer takes roughly 57 seconds on a CPU-only 2017 ultrabook against
+  about 5 seconds from the cloud provider. This is a hardware limit rather than
+  an architectural one, accepted deliberately so the hybrid path stays genuinely
+  active.
+- **The on-prem connector is a device-authenticated VPN** without per-service
+  access control lists, and the local model endpoint has no authentication of
+  its own — acceptable for a single-owner network, insufficient for a shared or
+  client network. Prompt content crosses it protected by transport encryption,
+  so an on-premises model inherits the same data-sensitivity considerations as
+  any other provider rather than being automatically safer for being local.
+- **The approval workflow has no real execution capability** and stores
+  proposals only in process memory.
+- **The agent has one read-only tool**, three non-adversarial policy cases, and
+  does not persist its execution trace.
+- **The retrieval baseline is five cases over one document.** Recall@K and
+  precision@K are not yet measured over representative multi-document data, and
+  the retrieval cascade's confidence threshold is configurable but not
+  calibrated — it compares similarity scores across two embedding models whose
+  scales are not strictly comparable. A reranker is the recorded principled
+  improvement.
+- **The document registry is a local JSON file**, so the application runs as a
+  single instance.
+- **The MCP server is local-only and OS-trusted.** It reads the whole local
+  registry and must not be exposed remotely.
+- Automatic release rollback and multi-host availability are not implemented.
+  Backup and restore automation exists and is verified, but encrypted off-host
+  scheduling and timed recovery objectives are not demonstrated continuously.
 
-GitHub Actions implements reusable quality, publication and deployment gates:
+---
 
-- Restore dependencies
-- Verify formatting, warning-free builds, 151 deterministic tests and migrations
-- Validate shell, Keycloak, Compose and deterministic fictional-PDF contracts
-- Build and inspect AMD64 and ARM64 production images
-- Publish SBOM/provenance with a commit tag and immutable digest
-- Deploy only reviewed `main` through the protected production environment
-- Require initialization, readiness and trusted-TLS smoke tests before recording
-  the digest
+## What comes next
 
-The current single-host Google Cloud deployment remains Compose-based and
-portable; Kubernetes and additional cloud-specific infrastructure are not
-justified at this stage.
+Runtime guardrails — tool-call authorization, rate limits, PII and
+prompt-injection checks, and post-action validation — before any of these
+paths are exposed more broadly. That gap is tracked deliberately rather than
+deferred quietly: model access policy answered *who*, and *what is being sent*
+is the question still open.
 
-## Repository Access
+The single-host Google Cloud deployment remains Compose-based and portable.
+Kubernetes and further cloud-specific infrastructure are not justified at this
+stage, and adding them to look production-grade would be the wrong reason.
 
-This public repository is a portfolio case study. The private implementation can be shared with verified recruiters or technical interviewers upon request.
+---
+
+## Repository access
+
+This public repository is a portfolio case study. The private implementation
+can be shared with verified recruiters or technical interviewers on request.
 
 ## Author
 
-**Elie Saber**  
-Senior .NET Engineer and Technical Lead developing production AI engineering and Enterprise AI Architecture capability.
+**Elie Saber**
+Senior .NET Engineer and Technical Lead, developing production AI engineering
+and Enterprise AI Architecture capability.
