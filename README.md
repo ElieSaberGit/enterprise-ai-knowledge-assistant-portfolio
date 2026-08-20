@@ -197,7 +197,7 @@ PdfPig · xUnit · Docker · GitHub Actions
 
 ## Engineering evidence
 
-- **216 automated tests** covering security, persistence, ingestion,
+- **321 automated tests** covering security, persistence, ingestion,
   retrieval, evaluation, providers, controllers, agent orchestration,
   structured output, approvals, model access policy, cost aggregation,
   observability and MCP protocol behavior. Warning-free builds.
