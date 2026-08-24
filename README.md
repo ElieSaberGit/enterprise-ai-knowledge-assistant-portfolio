@@ -188,20 +188,24 @@ Question
 ## Technology
 
 C# and .NET 10 LTS · ASP.NET Core · React, TypeScript, Vite, Tailwind ·
-Keycloak and OpenID Connect · PostgreSQL with EF Core · Qdrant · OpenAI ·
-Ollama with Microsoft.Extensions.AI · Tailscale (WireGuard mesh VPN) ·
-Model Context Protocol C# SDK · Microsoft.Extensions.Http.Resilience ·
-PdfPig · xUnit · Docker · GitHub Actions
+Keycloak and OpenID Connect · PostgreSQL with EF Core · Qdrant (hybrid
+dense/sparse search) · OpenAI · Ollama with Microsoft.Extensions.AI ·
+Microsoft Presidio (PII/data classification) · Tesseract OCR · Tailscale
+(WireGuard mesh VPN) · Model Context Protocol C# SDK ·
+Microsoft.Extensions.Http.Resilience · PdfPig, DocumentFormat.OpenXml ·
+xUnit · Docker · GitHub Actions
 
 ---
 
 ## Engineering evidence
 
-- **507 automated tests** covering security, persistence, ingestion,
-  retrieval, evaluation, providers, controllers, agent orchestration,
-  structured output, approvals, model access policy, cost aggregation,
-  observability, pilot-report generation and MCP protocol behavior.
-  Warning-free builds.
+- **507 automated tests** covering security, persistence, multi-format
+  ingestion (PDF, Word, Excel, PowerPoint, plain text, OCR'd scans), a
+  filesystem source connector with change/deletion propagation, hybrid
+  retrieval and reranking, evaluation, providers, controllers, agent
+  orchestration, structured output, approvals, model access policy, cost
+  aggregation, observability, pilot-report generation and MCP protocol
+  behavior. Warning-free builds.
 - **Quality gates on every pull request in both repositories**: formatting,
   warning-free builds, deterministic tests, migration model verification,
   shell/Keycloak/Compose contract checks, AMD64 and ARM64 production images,
@@ -269,12 +273,12 @@ what the outside world actually emits, or about which path a real user takes.
 Stated because a system's limits are part of its specification, and being
 first to name one is the cheapest way to control how it is discussed.
 
-- **Routing does not classify data.** Model access policy narrows *who* may
-  reach *which model*; it does not inspect *what is being sent*. A requirement
-  such as "regulated data must never leave the building" needs a
-  classification layer built first, and is not claimed as satisfied.
-- **Runtime guardrails are not built.** No PII detection, no prompt-injection
-  checking, no post-action validation of what an agent did.
+- **Routing now classifies data, but guardrails stop there.** Model access
+  policy narrows *who* may reach *which model*; a Presidio-based classifier
+  now inspects *what is being sent* — both the question and the retrieved
+  context — and can force a sensitive request local or refuse it. Still not
+  built: prompt-injection checking, tool-call authorization/rate limits, and
+  post-action validation of what an agent did.
 - **Local inference is not interactive on the demonstration hardware.** A
   grounded answer takes roughly 57 seconds on a CPU-only 2017 ultrabook against
   about 5 seconds from the cloud provider. This is a hardware limit rather than
@@ -290,17 +294,26 @@ first to name one is the cheapest way to control how it is discussed.
   proposals only in process memory.
 - **The agent has one read-only tool**, three non-adversarial policy cases, and
   does not persist its execution trace.
-- **The retrieval baseline is five cases over one document.** Recall@K and
-  precision@K are not yet measured over representative multi-document data, and
-  the retrieval cascade's confidence threshold is configurable but not
-  calibrated — it compares similarity scores across two embedding models whose
-  scales are not strictly comparable. A reranker is the recorded principled
-  improvement.
+- **Retrieval is now hybrid and reranked**, not the original single-threshold
+  cascade: dense and sparse (BM25) search run in parallel in Qdrant, fused by
+  reciprocal-rank fusion, then narrowed by a cross-encoder reranker
+  (`BAAI/bge-reranker-v2-m3`), on by default. An LLM-as-judge groundedness,
+  faithfulness and citation-accuracy score now gates CI against a versioned
+  case corpus rather than being unmeasured. That corpus is still a small
+  fictional set, not representative multi-document data — recall@K and
+  precision@K over a real client corpus remain unmeasured until a pilot
+  supplies one, which a new pilot-report generator produces on demand
+  (latency percentiles, cost, cloud-versus-local, corpus statistics, no
+  case silently omitted) but has not yet been run against real client data.
 - **The document registry moved to PostgreSQL**, replacing the earlier
   single-instance local JSON file, with a verified idempotent migration path
   for a pre-upgrade deployment's existing data.
-- **The MCP server is local-only and OS-trusted.** It reads the whole local
-  registry and must not be exposed remotely.
+- **The MCP server defaults to local-only and OS-trusted** (stdio, no network
+  exposure) — unchanged unless an operator explicitly configures the second,
+  opt-in transport: stateless streamable HTTP behind OAuth 2.1 with an
+  audience-bound token and the same per-user document filtering the main API
+  enforces. Nothing changes for a deployment that never sets that
+  configuration.
 - Automatic release rollback and multi-host availability are not implemented.
   Backup and restore automation exists and is verified, but encrypted off-host
   scheduling and timed recovery objectives are not demonstrated continuously.
@@ -314,11 +327,11 @@ first to name one is the cheapest way to control how it is discussed.
 
 ## What comes next
 
-Runtime guardrails — tool-call authorization, rate limits, PII and
-prompt-injection checks, and post-action validation — before any of these
-paths are exposed more broadly. That gap is tracked deliberately rather than
-deferred quietly: model access policy answered *who*, and *what is being sent*
-is the question still open.
+Runtime guardrails — tool-call authorization, rate limits, prompt-injection
+checks, and post-action validation — before any of these paths are exposed
+more broadly. Data classification is no longer the open half of that
+question; what remains is validating an agent's actions and requests
+themselves, not just what they're sent.
 
 The single-host Google Cloud deployment remains Compose-based and portable.
 Kubernetes and further cloud-specific infrastructure are not justified at this
