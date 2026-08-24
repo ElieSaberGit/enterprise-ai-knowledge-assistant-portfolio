@@ -304,6 +304,11 @@ first to name one is the cheapest way to control how it is discussed.
 - Automatic release rollback and multi-host availability are not implemented.
   Backup and restore automation exists and is verified, but encrypted off-host
   scheduling and timed recovery objectives are not demonstrated continuously.
+  An uninstall path exists (final backup, full teardown, and an explicit list
+  of what it deliberately does not touch — off-host backup copies, DNS, image
+  registry credentials, the host itself), with a task-oriented administrator
+  onboarding guide covering who creates administrators, who indexes
+  documents, and who grants or revokes reader access.
 
 ---
 
