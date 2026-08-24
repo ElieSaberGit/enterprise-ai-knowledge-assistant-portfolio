@@ -199,13 +199,13 @@ xUnit · Docker · GitHub Actions
 
 ## Engineering evidence
 
-- **507 automated tests** covering security, persistence, multi-format
+- **514 automated tests** covering security, persistence, multi-format
   ingestion (PDF, Word, Excel, PowerPoint, plain text, OCR'd scans), a
   filesystem source connector with change/deletion propagation, hybrid
   retrieval and reranking, evaluation, providers, controllers, agent
   orchestration, structured output, approvals, model access policy, cost
-  aggregation, observability, pilot-report generation and MCP protocol
-  behavior. Warning-free builds.
+  aggregation, observability, pilot-report generation, compliance
+  control-mapping and MCP protocol behavior. Warning-free builds.
 - **Quality gates on every pull request in both repositories**: formatting,
   warning-free builds, deterministic tests, migration model verification,
   shell/Keycloak/Compose contract checks, AMD64 and ARM64 production images,
@@ -322,6 +322,17 @@ first to name one is the cheapest way to control how it is discussed.
   registry credentials, the host itself), with a task-oriented administrator
   onboarding guide covering who creates administrators, who indexes
   documents, and who grants or revokes reader access.
+- **A commercial compliance case now exists, built from evidence rather than
+  asserted.** A persistent EU AI Act Article 50 disclosure (not a
+  dismissible toast) on every screen where a user actually talks to the AI,
+  and on the underlying API responses. An admin-only page maps NIST AI RMF's
+  four functions and ISO/IEC 42001's Annex A objectives to this system's own
+  audit log — every count on that page is independently checkable against
+  the same audit endpoint the Audit screen already exposes, not a second
+  disagreeing source of truth. A written data residency and data-handling
+  statement states plainly what is true of this architecture: single-tenant,
+  self-hosted per deployment, with OpenAI as the only sub-processor and only
+  on the classified, policy-gated cloud path.
 
 ---
 
