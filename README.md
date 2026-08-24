@@ -197,10 +197,11 @@ PdfPig · xUnit · Docker · GitHub Actions
 
 ## Engineering evidence
 
-- **321 automated tests** covering security, persistence, ingestion,
+- **507 automated tests** covering security, persistence, ingestion,
   retrieval, evaluation, providers, controllers, agent orchestration,
   structured output, approvals, model access policy, cost aggregation,
-  observability and MCP protocol behavior. Warning-free builds.
+  observability, pilot-report generation and MCP protocol behavior.
+  Warning-free builds.
 - **Quality gates on every pull request in both repositories**: formatting,
   warning-free builds, deterministic tests, migration model verification,
   shell/Keycloak/Compose contract checks, AMD64 and ARM64 production images,
@@ -295,8 +296,9 @@ first to name one is the cheapest way to control how it is discussed.
   calibrated — it compares similarity scores across two embedding models whose
   scales are not strictly comparable. A reranker is the recorded principled
   improvement.
-- **The document registry is a local JSON file**, so the application runs as a
-  single instance.
+- **The document registry moved to PostgreSQL**, replacing the earlier
+  single-instance local JSON file, with a verified idempotent migration path
+  for a pre-upgrade deployment's existing data.
 - **The MCP server is local-only and OS-trusted.** It reads the whole local
   registry and must not be exposed remotely.
 - Automatic release rollback and multi-host availability are not implemented.
