@@ -161,8 +161,9 @@ Stated because a system's limits are part of its specification.
   did.
 - **The approval workflow has no real execution capability** and stores
   proposals only in process memory.
-- **The agent has one read-only tool** and does not persist its execution
-  trace.
+- **The agent surface shown here has one read-only tool** and does not
+  persist its execution trace. The private implementation carries a much
+  larger tool catalogue — see below.
 - **The evaluation corpus is a small fictional set**, not representative
   multi-document data — recall@K and precision@K over a real corpus remain
   unmeasured until a pilot supplies one.
@@ -190,6 +191,49 @@ broadly.
 The single-host Google Cloud deployment remains Compose-based and portable.
 Kubernetes is not justified at this stage, and adding it to look
 production-grade would be the wrong reason.
+
+---
+
+## Beyond this case study
+
+This repository is a deliberately narrow slice. The private implementation is
+considerably larger, and the parts that stay private are the parts closest to
+a specific domain and go-to-market. At a capability level, and without the
+domain detail:
+
+- **A large, task-scoped agent tool catalogue.** Dozens of tools rather than
+  one, each with a strict input schema, its own deterministic and adversarial
+  tests, per-tool observability, and no shared path around the authorization
+  the main API enforces.
+- **A resumable workflow engine.** Multi-step document workflows modelled as
+  an explicit state machine per record, with a human review and approval gate
+  at every consequential stage and full restart-after-failure semantics.
+- **Grounding safeguards past retrieval.** A verification pass that checks each
+  answer sentence against the passage it cites and flags unsupported claims,
+  plus source-currency checking — both gating an output before it can become
+  filed work product, with an explicit, logged human override.
+- **Records lifecycle.** Retention scheduling, legal-hold that freezes
+  removal, and irreversible defensible disposal with a tamper-evident,
+  hash-chained certificate.
+- **A configuration catalogue.** Document types, templates, rule sets and
+  reference sources are data an administrator edits, not code — so the product
+  is tailored per deployment without a release.
+- **A client-facing request portal.** External submissions with an identity
+  gate that flow into the same internal workflow and audit trail.
+- **Access governance.** Per-scope retrieval isolation enforced at the vector
+  store, an access-decision log for every answer, and an append-only change
+  history for the assistant's own configuration.
+- **Evaluation depth.** Accuracy and bias-sliced evaluation harnesses for the
+  extraction and classification models, not only answer quality, feeding the
+  same CI gate.
+- **Deployment portability.** The same Compose boundary verified on more than
+  one cloud target, a documented data-handling posture, and a verified
+  uninstall path.
+
+Every item above is built and tested in the private repository. Each was
+approached the same way the public slice was: research the current
+best-practice approach, decide the shape deliberately, then build it in
+small reviewable increments with adversarial tests and a negative control.
 
 ---
 
