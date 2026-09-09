@@ -12,6 +12,12 @@ implementation. Do not present an experimental or in-progress slice as a
 completed, production-ready capability. Never copy credentials, host access,
 customer data, or contracts into this repository.
 
+## Working efficiently
+
+Keep sessions focused: locate with search then read the specific lines rather
+than whole files, don't re-read a file you just edited, and keep one session to
+one piece of work.
+
 ## If code is added
 
 Every authored method and constructor gets a concise comment above its
